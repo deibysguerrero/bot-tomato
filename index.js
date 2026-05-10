@@ -12,9 +12,9 @@ const CLIENT_ID = process.env.CLIENT_ID;
 const GUILD_ID = process.env.GUILD_ID;
 
 const cooldowns = new Map();
-const COOLDOWN_TIME = 600000;
+const COOLDOWN_TIME = 600000; 
 
-// --- CONFIGURACIÓN DE SERVICIOS (Asegúrate que estos nombres coincidan con tus .txt) ---
+// --- CONFIGURACIÓN DE SERVICIOS ---
 const services = [
     { name: 'Crunchyroll', value: 'crunchyroll' },
     { name: 'Fortnite', value: 'fortnite' },
@@ -27,25 +27,17 @@ const commands = [
         .setName('gen')
         .setDescription('Generate an account')
         .addStringOption(option => 
-            option.setName('service') // ESTE NOMBRE DEBE SER IGUAL AL QUE USAS EN EL CODIGO
-                .setDescription('Select the service')
-                .setRequired(true)
-                .addChoices(...services)),
+            option.setName('service').setDescription('Select the service').setRequired(true).addChoices(...services)),
     
-    new SlashCommandBuilder().setName('stock').setDescription('Check available stock'),
+    new SlashCommandBuilder().setName('stock').setDescription('Check current stock'),
     
     new SlashCommandBuilder()
         .setName('restock')
         .setDescription('Add accounts to stock (Staff Only)')
         .addStringOption(option => 
-            option.setName('service')
-                .setDescription('Service to restock')
-                .setRequired(true)
-                .addChoices(...services))
+            option.setName('service').setDescription('Service to restock').setRequired(true).addChoices(...services)) // AQUÍ ESTABA EL ERROR
         .addStringOption(option => 
-            option.setName('account')
-                .setDescription('Account data (user:pass)')
-                .setRequired(true))
+            option.setName('account').setDescription('Account data (user:pass)').setRequired(true))
 ].map(command => command.toJSON());
 
 const rest = new REST({ version: '10' }).setToken(TOKEN);
@@ -53,9 +45,8 @@ const rest = new REST({ version: '10' }).setToken(TOKEN);
 client.once('ready', async () => {
     console.log(`✅ Tomato Gen online as ${client.user.tag}`);
     try {
-        // Esto registra los comandos específicamente en tu servidor para que sea instantáneo
         await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands });
-        console.log('🚀 Commands and Menus updated successfully.');
+        console.log('🚀 Commands and Menus updated.');
     } catch (e) { console.error(e); }
 });
 
@@ -64,86 +55,80 @@ client.on('interactionCreate', async interaction => {
 
     const { commandName, options, user, member } = interaction;
 
+    // Función para obtener la ruta del archivo
+    const getPath = (srv) => (srv === 'crunchyroll') ? './stock.txt' : `./${srv}.txt`;
+
+    // --- COMANDO GEN ---
     if (commandName === 'gen') {
-        const service = options.getString('service'); // Aquí es donde antes daba "null"
-        
+        const service = options.getString('service');
+        if (!service) return await interaction.reply({ content: '❌ Invalid service.', ephemeral: true });
+
         if (cooldowns.has(user.id)) {
-            const expirationTime = cooldowns.get(user.id) + COOLDOWN_TIME;
-            if (Date.now() < expirationTime) {
-                const timeLeft = Math.ceil((expirationTime - Date.now()) / 60000);
-                return await interaction.reply({ 
-                    content: `❌ [PRIVATE] Please wait ${timeLeft} minute(s).`, 
-                    ephemeral: true 
-                });
+            const exp = cooldowns.get(user.id) + COOLDOWN_TIME;
+            if (Date.now() < exp) {
+                const left = Math.ceil((exp - Date.now()) / 60000);
+                return await interaction.reply({ content: `❌ Wait ${left} min.`, ephemeral: true });
             }
         }
 
-        let filePath = (service === 'crunchyroll') ? './stock.txt' : `./${service}.txt`;
-
-        if (!fs.existsSync(filePath)) {
-            return await interaction.reply({ content: `❌ Error: ${service} file missing.`, ephemeral: true });
-        }
+        const filePath = getPath(service);
+        if (!fs.existsSync(filePath)) return await interaction.reply({ content: `❌ Error: ${service} file missing.`, ephemeral: true });
 
         let content = fs.readFileSync(filePath, 'utf8').trim();
-        let allAccounts = content.split(/\s+/).filter(l => l.length > 0);
+        let accounts = content.split(/\s+/).filter(l => l.length > 0);
 
-        if (allAccounts.length > 0) {
-            const account = allAccounts.shift();
-            fs.writeFileSync(filePath, allAccounts.join(' '));
+        if (accounts.length > 0) {
+            const acc = accounts.shift();
+            fs.writeFileSync(filePath, accounts.join(' '));
 
             const embed = new EmbedBuilder()
-                .setTitle('🍅 Tomato Gen - Success!')
+                .setTitle('🍅 Tomato Gen Success!')
                 .setColor(0xFF6347)
-                .addFields({ name: 'Account Details', value: `\`${account}\`` })
+                .addFields({ name: 'Service', value: service }, { name: 'Account', value: `\`${acc}\`` })
                 .setTimestamp();
 
             try {
                 await user.send({ embeds: [embed] });
-                cooldowns.set(user.id, Date.now()); 
-                await interaction.reply({ 
-                    content: `✅ **${user.tag}** generated a **${service}** account!`, 
-                    ephemeral: false 
-                });
+                cooldowns.set(user.id, Date.now());
+                await interaction.reply({ content: `✅ **${user.tag}** generated a **${service}** account!`, ephemeral: false });
             } catch (e) {
-                await interaction.reply({ content: '❌ Open your DMs!', ephemeral: true });
+                await interaction.reply({ content: '❌ DMs closed!', ephemeral: true });
             }
         } else {
             await interaction.reply({ content: `❌ Out of stock for **${service}**!`, ephemeral: false });
         }
     }
 
+    // --- COMANDO STOCK ---
     if (commandName === 'stock') {
-        const getCount = (file) => {
-            if (!fs.existsSync(file)) return 0;
-            const data = fs.readFileSync(file, 'utf8').trim();
-            return data === "" ? 0 : data.split(/\s+/).length;
-        };
-
-        const stockEmbed = new EmbedBuilder()
+        const count = (f) => fs.existsSync(f) ? fs.readFileSync(f, 'utf8').trim().split(/\s+/).filter(x => x).length : 0;
+        const embed = new EmbedBuilder()
             .setTitle('📊 Tomato Stock Status')
             .setColor(0x5865F2)
             .addFields(
-                { name: '🟠 Crunchyroll', value: `${getCount('./stock.txt')}`, inline: true },
-                { name: '🔫 Fortnite', value: `${getCount('./fortnite.txt')}`, inline: true },
-                { name: '📺 Netflix', value: `${getCount('./netflix.txt')}`, inline: true },
-                { name: '⛏️ Minecraft', value: `${getCount('./minecraft.txt')}`, inline: true }
+                { name: '🟠 Crunchyroll', value: `${count('./stock.txt')}`, inline: true },
+                { name: '🔫 Fortnite', value: `${count('./fortnite.txt')}`, inline: true },
+                { name: '📺 Netflix', value: `${count('./netflix.txt')}`, inline: true },
+                { name: '⛏️ Minecraft', value: `${count('./minecraft.txt')}`, inline: true }
             );
-        
-        await interaction.reply({ embeds: [stockEmbed] });
+        await interaction.reply({ embeds: [embed] });
     }
 
+    // --- COMANDO RESTOCK ---
     if (commandName === 'restock') {
-        const isStaff = member.permissions.has(PermissionFlagsBits.ManageMessages) || 
-                      member.permissions.has(PermissionFlagsBits.Administrator);
-
+        const isStaff = member.permissions.has(PermissionFlagsBits.ManageMessages) || member.permissions.has(PermissionFlagsBits.Administrator);
         if (!isStaff) return await interaction.reply({ content: "❌ No permission!", ephemeral: true });
 
         const service = options.getString('service');
-        const accountData = options.getString('account');
-        let filePath = (service === 'crunchyroll') ? './stock.txt' : `./${service}.txt`;
+        const account = options.getString('account');
+        const filePath = getPath(service);
 
-        fs.appendFileSync(filePath, ` ${accountData}`);
-        await interaction.reply({ content: `✅ Successfully added account(s) to **${service}**!`, ephemeral: true });
+        try {
+            fs.appendFileSync(filePath, ` ${account}`);
+            await interaction.reply({ content: `✅ Added to **${service}**!`, ephemeral: true });
+        } catch (e) {
+            await interaction.reply({ content: "❌ Error writing file.", ephemeral: true });
+        }
     }
 });
 
