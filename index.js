@@ -2,6 +2,14 @@ require('dotenv').config();
 const { Client, GatewayIntentBits, SlashCommandBuilder, Routes, EmbedBuilder, PermissionFlagsBits } = require('discord.js');
 const { REST } = require('@discordjs/rest');
 const fs = require('fs');
+const http = require('http'); 
+
+// --- SERVIDOR HTTP PARA RENDER (PORT 10000) ---
+const port = process.env.PORT || 10000;
+http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end('Tomato Bot is Active');
+}).listen(port, '0.0.0.0');
 
 const client = new Client({
     intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages]
@@ -12,9 +20,8 @@ const CLIENT_ID = process.env.CLIENT_ID;
 const GUILD_ID = process.env.GUILD_ID;
 
 const cooldowns = new Map();
-const COOLDOWN_TIME = 600000; // 10 minutes
+const COOLDOWN_TIME = 600000; 
 
-// --- SERVICES CONFIGURATION ---
 const services = [
     { name: 'Crunchyroll', value: 'crunchyroll' },
     { name: 'Fortnite', value: 'fortnite' },
@@ -26,27 +33,25 @@ const commands = [
     new SlashCommandBuilder()
         .setName('gen')
         .setDescription('Generate an account')
-        .addStringOption(opt => 
-            opt.setName('service').setDescription('Select the service').setRequired(true).addChoices(...services)),
+        .addStringOption(opt => opt.setName('service').setDescription('Select service').setRequired(true).addChoices(...services)),
     
-    new SlashCommandBuilder().setName('stock').setDescription('Check available stock'),
+    new SlashCommandBuilder().setName('stock').setDescription('Check stock status'),
     
     new SlashCommandBuilder()
         .setName('restock')
-        .setDescription('Add accounts to stock (Staff Only)')
-        .addStringOption(opt => 
-            opt.setName('service').setDescription('Service to restock').setRequired(true).addChoices(...services))
-        .addStringOption(opt => 
-            opt.setName('account').setDescription('Account data (user:pass)').setRequired(true))
+        .setDescription('Add accounts (Manage Messages Required)')
+        .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages) // <--- PERMISO AQUÍ
+        .addStringOption(opt => opt.setName('service').setDescription('Service').setRequired(true).addChoices(...services))
+        .addStringOption(opt => opt.setName('account').setDescription('user:pass').setRequired(true))
 ].map(c => c.toJSON());
 
 const rest = new REST({ version: '10' }).setToken(TOKEN);
 
 client.once('ready', async () => {
-    console.log(`✅ Tomato Gen online as ${client.user.tag}`);
+    console.log(`✅ Logged in as ${client.user.tag}`);
     try {
         await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands });
-        console.log('🚀 Commands and Menus updated successfully.');
+        console.log('🚀 Commands updated with permissions.');
     } catch (e) { console.error(e); }
 });
 
@@ -54,94 +59,59 @@ client.on('interactionCreate', async interaction => {
     if (!interaction.isChatInputCommand()) return;
     const { commandName, options, user, member } = interaction;
 
-    // Helper to get correct file path
-    const getPath = (srv) => (srv === 'crunchyroll') ? './stock.txt' : `./${srv}.txt`;
+    const getPath = (s) => (s === 'crunchyroll') ? './stock.txt' : `./${s}.txt`;
 
-    // --- GEN COMMAND ---
     if (commandName === 'gen') {
         const service = options.getString('service');
-        
-        // Cooldown Check
         if (cooldowns.has(user.id)) {
             const exp = cooldowns.get(user.id) + COOLDOWN_TIME;
-            if (Date.now() < exp) {
-                const left = Math.ceil((exp - Date.now()) / 60000);
-                return await interaction.reply({ 
-                    content: `❌ [PRIVATE] Please wait ${left} minute(s) before generating again!`, 
-                    ephemeral: true 
-                });
-            }
+            if (Date.now() < exp) return interaction.reply({ content: `❌ Wait ${Math.ceil((exp - Date.now()) / 60000)} min.`, ephemeral: true });
         }
 
         const path = getPath(service);
-        if (!fs.existsSync(path)) return await interaction.reply({ content: `❌ Error: ${service} file not found.`, ephemeral: true });
+        if (!fs.existsSync(path)) return interaction.reply({ content: `❌ File missing for ${service}.`, ephemeral: true });
 
-        let content = fs.readFileSync(path, 'utf8').trim();
-        let accounts = content.split(/\s+/).filter(l => l.length > 0);
-
+        let accounts = fs.readFileSync(path, 'utf8').trim().split(/\s+/).filter(x => x);
         if (accounts.length > 0) {
             const acc = accounts.shift();
             fs.writeFileSync(path, accounts.join(' '));
-
-            const embed = new EmbedBuilder()
-                .setTitle('🍅 Tomato Gen - Success!')
-                .setDescription(`Your **${service}** account has been delivered.`)
-                .setColor(0xFF6347)
-                .addFields({ name: 'Account Details', value: `\`${acc}\`` })
-                .setFooter({ text: 'Enjoy your account!' })
-                .setTimestamp();
-
+            const embed = new EmbedBuilder().setTitle('🍅 Tomato Gen').setColor(0xFF6347).addFields({ name: 'Service', value: service }, { name: 'Account', value: `\`${acc}\`` });
+            
             try {
                 await user.send({ embeds: [embed] });
                 cooldowns.set(user.id, Date.now());
-                await interaction.reply({ 
-                    content: `✅ **${user.tag}** just generated a **${service}** account! Check your DMs.`, 
-                    ephemeral: false 
-                });
-            } catch (e) {
-                await interaction.reply({ content: '❌ Your DMs are closed!', ephemeral: true });
-            }
+                await interaction.reply({ content: `✅ **${user.tag}** generated a **${service}** account! Check DMs.` });
+            } catch { await interaction.reply({ content: '❌ Open your DMs!', ephemeral: true }); }
         } else {
-            await interaction.reply({ content: `❌ Out of stock for **${service}**!`, ephemeral: false });
+            await interaction.reply({ content: `❌ No stock for ${service}!` });
         }
     }
 
-    // --- STOCK COMMAND ---
     if (commandName === 'stock') {
         const count = (f) => fs.existsSync(f) ? fs.readFileSync(f, 'utf8').trim().split(/\s+/).filter(x => x).length : 0;
-        
-        const stockEmbed = new EmbedBuilder()
-            .setTitle('📊 Tomato Stock Status')
-            .setColor(0x5865F2)
-            .addFields(
-                { name: '🟠 Crunchyroll', value: `${count('./stock.txt')}`, inline: true },
-                { name: '🔫 Fortnite', value: `${count('./fortnite.txt')}`, inline: true },
-                { name: '📺 Netflix', value: `${count('./netflix.txt')}`, inline: true },
-                { name: '⛏️ Minecraft', value: `${count('./minecraft.txt')}`, inline: true }
-            )
-            .setTimestamp();
-        
-        await interaction.reply({ embeds: [stockEmbed] });
+        const embed = new EmbedBuilder().setTitle('📊 Stock Info').setColor(0x5865F2).addFields(
+            { name: 'Crunchyroll', value: `${count('./stock.txt')}`, inline: true },
+            { name: 'Fortnite', value: `${count('./fortnite.txt')}`, inline: true },
+            { name: 'Netflix', value: `${count('./netflix.txt')}`, inline: true },
+            { name: 'Minecraft', value: `${count('./minecraft.txt')}`, inline: true }
+        );
+        await interaction.reply({ embeds: [embed] });
     }
 
-    // --- RESTOCK COMMAND ---
     if (commandName === 'restock') {
-        const isStaff = member.permissions.has(PermissionFlagsBits.ManageMessages) || member.permissions.has(PermissionFlagsBits.Administrator);
-        if (!isStaff) return await interaction.reply({ content: "❌ You don't have permission!", ephemeral: true });
+        // Doble verificación de seguridad
+        if (!member.permissions.has(PermissionFlagsBits.ManageMessages)) {
+            return interaction.reply({ content: "❌ You need 'Manage Messages' permission!", ephemeral: true });
+        }
 
         const service = options.getString('service');
-        const accountData = options.getString('account');
+        const account = options.getString('account');
         const path = getPath(service);
 
-        try {
-            // Append with a space so they stay as separate accounts
-            fs.appendFileSync(path, ` ${accountData}`);
-            await interaction.reply({ content: `✅ Successfully added accounts to **${service}**!`, ephemeral: true });
-        } catch (e) {
-            await interaction.reply({ content: "❌ Error writing to file.", ephemeral: true });
-        }
+        fs.appendFileSync(path, ` ${account}`);
+        await interaction.reply({ content: `✅ Successfully added to **${service}**!`, ephemeral: true });
     }
 });
 
 client.login(TOKEN);
-          
+     
