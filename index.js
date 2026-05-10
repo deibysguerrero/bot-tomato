@@ -1,8 +1,3 @@
-const http = require('http');
-http.createServer((req, res) => {
-  res.write("El tomate esta vivo");
-  res.end();
-}).listen(10000);
 require('dotenv').config();
 const { Client, GatewayIntentBits, SlashCommandBuilder, Routes, EmbedBuilder, PermissionFlagsBits } = require('discord.js');
 const { REST } = require('@discordjs/rest');
@@ -10,104 +5,155 @@ const fs = require('fs');
 
 const client = new Client({
     intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages]
-    });
+});
 
-    const TOKEN = process.env.DISCORD_TOKEN;
-    const CLIENT_ID = process.env.CLIENT_ID;
-    const GUILD_ID = process.env.GUILD_ID;
+// Environment Variables from Render
+const TOKEN = process.env.DISCORD_TOKEN;
+const CLIENT_ID = process.env.CLIENT_ID;
+const GUILD_ID = process.env.GUILD_ID;
 
-    const commands = [
-        new SlashCommandBuilder().setName('gen').setDescription('Generate an account'),
-            new SlashCommandBuilder().setName('stock').setDescription('Check current stock'),
-                new SlashCommandBuilder().setName('clear').setDescription('Clear all stock (Mod/Admin only)'),
-                    new SlashCommandBuilder()
-                            .setName('restock')
-                                    .setDescription('Add a new account to stock (Mod/Admin only)')
-                                            .addStringOption(option => 
-                                                        option.setName('account')
-                                                                        .setDescription('The account data (user:pass)')
-                                                                                        .setRequired(true))
-                                                                                        ].map(command => command.toJSON());
+const cooldowns = new Map();
+const COOLDOWN_TIME = 600000; // 10 minutes in milliseconds
 
-                                                                                        const rest = new REST({ version: '10' }).setToken(TOKEN);
+// --- SERVICE CONFIGURATION ---
+const services = [
+    { name: 'Crunchyroll', value: 'crunchyroll' },
+    { name: 'Fortnite', value: 'fortnite' },
+    { name: 'Netflix', value: 'netflix' },
+    { name: 'Minecraft', value: 'minecraft' }
+];
 
-                                                                                        client.once('ready', async () => {
-                                                                                            console.log(`✅ Tomato Gen online as ${client.user.tag}`);
-                                                                                                try {
-                                                                                                        await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands });
-                                                                                                                console.log('🚀 Mod & Admin commands registered.');
-                                                                                                                    } catch (e) { console.error(e); }
-                                                                                                                    });
+const commands = [
+    new SlashCommandBuilder()
+        .setName('gen')
+        .setDescription('Generate an account')
+        .addStringOption(option => 
+            option.setName('service').setDescription('Select the service').setRequired(true).addChoices(...services)),
+    
+    new SlashCommandBuilder().setName('stock').setDescription('Check available stock'),
+    
+    new SlashCommandBuilder()
+        .setName('restock')
+        .setDescription('Add accounts to stock (Staff Only)')
+        .addStringOption(option => 
+            option.setName('service').setDescription('Service to restock').setRequired(true).addChoices(...services))
+        .addStringOption(option => 
+            option.setName('account').setDescription('Account data (user:pass)').setRequired(true))
+].map(command => command.toJSON());
 
-                                                                                                                    client.on('interactionCreate', async interaction => {
-                                                                                                                        if (!interaction.isChatInputCommand()) return;
+const rest = new REST({ version: '10' }).setToken(TOKEN);
 
-                                                                                                                            // --- PUBLIC COMMANDS ---
-                                                                                                                                if (interaction.commandName === 'gen') {
-                                                                                                                                        if (!fs.existsSync('stock.txt')) return await interaction.reply({ content: '❌ Error: stock.txt missing.', ephemeral: true });
-                                                                                                                                                let content = fs.readFileSync('stock.txt', 'utf8');
-                                                                                                                                                        let lines = content.split('\n').filter(l => l.trim() !== '');
+client.once('ready', async () => {
+    console.log(`✅ Tomato Gen online as ${client.user.tag}`);
+    try {
+        await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands });
+        console.log('🚀 Commands and choices registered successfully.');
+    } catch (e) { console.error(e); }
+});
 
-                                                                                                                                                                if (lines.length > 0) {
-                                                                                                                                                                            const account = lines.shift();
-                                                                                                                                                                                        fs.writeFileSync('stock.txt', lines.join('\n'));
-                                                                                                                                                                                                    const embed = new EmbedBuilder()
-                                                                                                                                                                                                                    .setTitle('🍅 Tomato Gen - Account Generated!')
-                                                                                                                                                                                                                                    .setDescription('Your account has been successfully generated.')
-                                                                                                                                                                                                                                                    .setColor(0xFF6347)
-                                                                                                                                                                                                                                                                    .addFields({ name: 'Account Details', value: `\`${account}\`` })
-                                                                                                                                                                                                                                                                                    .setFooter({ text: 'Thanks for using Tomato Gen!' })
-                                                                                                                                                                                                                                                                                                    .setTimestamp();
-                                                                                                                                                                                                                                                                                                                try {
-                                                                                                                                                                                                                                                                                                                                await interaction.user.send({ embeds: [embed] });
-                                                                                                                                                                                                                                                                                                                                                await interaction.reply({ content: '✅ Success! Check your DMs.', ephemeral: false });
-                                                                                                                                                                                                                                                                                                                                                            } catch (e) {
-                                                                                                                                                                                                                                                                                                                                                                            await interaction.reply({ content: '❌ Your DMs are closed!', ephemeral: true });
-                                                                                                                                                                                                                                                                                                                                                                                        }
-                                                                                                                                                                                                                                                                                                                                                                                                } else {
-                                                                                                                                                                                                                                                                                                                                                                                                            await interaction.reply({ content: '❌ Out of stock!', ephemeral: false });
-                                                                                                                                                                                                                                                                                                                                                                                                                    }
-                                                                                                                                                                                                                                                                                                                                                                                                                        }
+client.on('interactionCreate', async interaction => {
+    if (!interaction.isChatInputCommand()) return;
 
-                                                                                                                                                                                                                                                                                                                                                                                                                            if (interaction.commandName === 'stock') {
-                                                                                                                                                                                                                                                                                                                                                                                                                                    const content = fs.existsSync('stock.txt') ? fs.readFileSync('stock.txt', 'utf8') : '';
-                                                                                                                                                                                                                                                                                                                                                                                                                                            const total = content.split('\n').filter(l => l.trim() !== '').length;
-                                                                                                                                                                                                                                                                                                                                                                                                                                                    const stockEmbed = new EmbedBuilder()
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                .setTitle('📊 Tomato Stock')
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                            .setDescription(`Available accounts: **${total}**`)
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        .setColor(0x5865F2)
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    .setTimestamp();
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            await interaction.reply({ embeds: [stockEmbed], ephemeral: false });
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                }
+    const { commandName, options, user, member } = interaction;
 
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    // --- SECURITY FOR MODS/ADMINS ---
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        // Ahora permite Administradores O gente que pueda gestionar mensajes (Moderadores)
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            const isStaff = interaction.member.permissions.has(PermissionFlagsBits.ManageMessages) || 
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                interaction.member.permissions.has(PermissionFlagsBits.Administrator);
+    // --- GEN COMMAND ---
+    if (commandName === 'gen') {
+        const service = options.getString('service');
+        
+        // Private Cooldown Check
+        if (cooldowns.has(user.id)) {
+            const expirationTime = cooldowns.get(user.id) + COOLDOWN_TIME;
+            if (Date.now() < expirationTime) {
+                const timeLeft = Math.ceil((expirationTime - Date.now()) / 60000);
+                return await interaction.reply({ 
+                    content: `❌ [PRIVATE] Please wait ${timeLeft} minute(s) before generating again.`, 
+                    ephemeral: true 
+                });
+            }
+        }
 
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    if (interaction.commandName === 'clear' || interaction.commandName === 'restock') {
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            if (!isStaff) {
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        return await interaction.reply({ content: "❌ You're not a moderator or admin!", ephemeral: true });
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                }
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    }
+        // File mapping: Crunchyroll -> stock.txt | Others -> service.txt
+        let filePath = (service === 'crunchyroll') ? './stock.txt' : `./${service}.txt`;
 
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        // --- MOD/ADMIN COMMANDS ---
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            if (interaction.commandName === 'clear') {
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    fs.writeFileSync('stock.txt', '');
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            await interaction.reply({ content: '🗑️ Stock has been cleared successfully!', ephemeral: true });
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                }
+        if (!fs.existsSync(filePath)) {
+            return await interaction.reply({ content: `❌ Error: ${service} database not found.`, ephemeral: true });
+        }
 
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    if (interaction.commandName === 'restock') {
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            const newAccount = interaction.options.getString('account');
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    fs.appendFileSync('stock.txt', `\n${newAccount}`);
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            const restockEmbed = new EmbedBuilder()
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        .setTitle('📥 Stock Updated')
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    .setDescription(`Successfully added 1 account to the stock.`)
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                .setColor(0x2ECC71) 
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            .setTimestamp();
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    await interaction.reply({ embeds: [restockEmbed], ephemeral: true });
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        }
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        });
+        let content = fs.readFileSync(filePath, 'utf8').trim();
+        // Support for multiple accounts per line (split by space/newline)
+        let allAccounts = content.split(/\s+/).filter(l => l.length > 0);
 
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        client.login(TOKEN);
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        
+        if (allAccounts.length > 0) {
+            const account = allAccounts.shift();
+            fs.writeFileSync(filePath, allAccounts.join(' '));
+
+            const embed = new EmbedBuilder()
+                .setTitle('🍅 Tomato Gen - Success!')
+                .setDescription(`Your **${service}** account has been delivered.`)
+                .setColor(0xFF6347)
+                .addFields({ name: 'Account Info', value: `\`${account}\`` })
+                .setFooter({ text: 'Enjoy your account!' })
+                .setTimestamp();
+
+            try {
+                await user.send({ embeds: [embed] });
+                cooldowns.set(user.id, Date.now()); 
+                
+                // Public Success Message
+                await interaction.reply({ 
+                    content: `✅ **${user.tag}** just generated a **${service}** account! Check your DMs.`, 
+                    ephemeral: false 
+                });
+            } catch (e) {
+                await interaction.reply({ content: '❌ I cannot send you DMs! Please check your privacy settings.', ephemeral: true });
+            }
+        } else {
+            await interaction.reply({ content: `❌ Out of stock for **${service}**!`, ephemeral: false });
+        }
+    }
+
+    // --- STOCK COMMAND ---
+    if (commandName === 'stock') {
+        const getCount = (file) => {
+            if (!fs.existsSync(file)) return 0;
+            const data = fs.readFileSync(file, 'utf8').trim();
+            return data === "" ? 0 : data.split(/\s+/).length;
+        };
+
+        const stockEmbed = new EmbedBuilder()
+            .setTitle('📊 Tomato Stock Status')
+            .setColor(0x5865F2)
+            .addFields(
+                { name: '🟠 Crunchyroll', value: `${getCount('./stock.txt')}`, inline: true },
+                { name: '🔫 Fortnite', value: `${getCount('./fortnite.txt')}`, inline: true },
+                { name: '📺 Netflix', value: `${getCount('./netflix.txt')}`, inline: true },
+                { name: '⛏️ Minecraft', value: `${getCount('./minecraft.txt')}`, inline: true }
+            )
+            .setTimestamp();
+        
+        await interaction.reply({ embeds: [stockEmbed], ephemeral: false });
+    }
+
+    // --- STAFF SECURITY & RESTOCK ---
+    const isStaff = member.permissions.has(PermissionFlagsBits.ManageMessages) || 
+                  member.permissions.has(PermissionFlagsBits.Administrator);
+
+    if (commandName === 'restock') {
+        if (!isStaff) return await interaction.reply({ content: "❌ You don't have permission to use this command!", ephemeral: true });
+
+        const service = options.getString('service');
+        const accountData = options.getString('account');
+        let filePath = (service === 'crunchyroll') ? './stock.txt' : `./${service}.txt`;
+
+        try {
+            // Append with a space so the generator identifies it as a new account
+            fs.appendFileSync(filePath, ` ${accountData}`);
+            await interaction.reply({ content: `✅ Successfully added account(s) to **${service}**!`, ephemeral: false });
+        } catch (e) {
+            await interaction.reply({ content: "❌ Error writing to the file.", ephemeral: true });
+        }
+    }
+});
+
+client.login(TOKEN);
+
