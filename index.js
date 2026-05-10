@@ -1,3 +1,4 @@
+const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 require('dotenv').config();
 const { Client, GatewayIntentBits, SlashCommandBuilder, Routes, EmbedBuilder, PermissionFlagsBits } = require('discord.js');
 const { REST } = require('@discordjs/rest');
@@ -38,12 +39,14 @@ const commands = [
     
     new SlashCommandBuilder().setName('stock').setDescription('Check stock status'),
     
-    new SlashCommandBuilder()
+        new SlashCommandBuilder()
         .setName('restock')
-        .setDescription('Add accounts (Manage Messages Required)')
+        .setDescription('Add accounts via text or file')
         .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
         .addStringOption(opt => opt.setName('service').setDescription('Service').setRequired(true).addChoices(...services))
-        .addStringOption(opt => opt.setName('account').setDescription('user:pass').setRequired(true))
+        .addStringOption(opt => opt.setName('account').setDescription('user:pass (Optional if file is sent)').setRequired(false))
+        .addAttachmentOption(opt => opt.setName('file').setDescription('Upload a .txt file with accounts').setRequired(false)),
+
      new SlashCommandBuilder()
         .setName('clear')
         .setDescription('Clear all stock from a specific service')
@@ -136,18 +139,31 @@ client.on('interactionCreate', async interaction => {
         await interaction.reply({ embeds: [embed] });
     }
 
-    if (commandName === 'restock') {
+        if (commandName === 'restock') {
         if (!member.permissions.has(PermissionFlagsBits.ManageMessages)) {
-            return interaction.reply({ content: "❌ You don't have permission to restock!", ephemeral: true });
+            return interaction.reply({ content: "❌ You Don't Have Permission!", ephemeral: true });
         }
 
         const service = options.getString('service');
         const account = options.getString('account');
+        const file = options.getAttachment('file');
         const path = getPath(service);
+        let contentToAdd = '';
 
-        fs.appendFileSync(path, ` ${account}`);
-        await interaction.reply({ content: `✅ Successfully added 1 account to **${service}**!`, ephemeral: true });
+        if (file) {
+            const response = await fetch(file.url);
+            const text = await response.text();
+            contentToAdd = `\n${text.trim()}`;
+        } else if (account) {
+            contentToAdd = ` ${account.trim()}`;
+        } else {
+            return interaction.reply({ content: "❌ Upload a .txt file or type a account.", ephemeral: true });
+        }
+
+        fs.appendFileSync(path, contentToAdd);
+        return interaction.reply({ content: `✅ Stock of **${service}** updated successfully .`, ephemeral: true });
     }
+    
 });
 
 client.login(TOKEN);
