@@ -4,7 +4,7 @@ const { REST } = require('@discordjs/rest');
 const fs = require('fs');
 const http = require('http'); 
 
-// --- SERVIDOR HTTP PARA RENDER (PORT 10000) ---
+// --- SERVER PARA RAILWAY/RENDER ---
 const port = process.env.PORT || 10000;
 http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
@@ -20,13 +20,14 @@ const CLIENT_ID = process.env.CLIENT_ID;
 const GUILD_ID = process.env.GUILD_ID;
 
 const cooldowns = new Map();
-const COOLDOWN_TIME = 600000; 
+const COOLDOWN_TIME = 600000; // 10 minutos
 
 const services = [
     { name: 'Crunchyroll', value: 'crunchyroll' },
     { name: 'Fortnite', value: 'fortnite' },
     { name: 'Netflix', value: 'netflix' },
-    { name: 'Minecraft', value: 'minecraft' }
+    { name: 'Minecraft', value: 'minecraft' },
+    { name: 'Roblox', value: 'roblox' }
 ];
 
 const commands = [
@@ -40,7 +41,7 @@ const commands = [
     new SlashCommandBuilder()
         .setName('restock')
         .setDescription('Add accounts (Manage Messages Required)')
-        .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages) // <--- PERMISO AQUÍ
+        .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
         .addStringOption(opt => opt.setName('service').setDescription('Service').setRequired(true).addChoices(...services))
         .addStringOption(opt => opt.setName('account').setDescription('user:pass').setRequired(true))
 ].map(c => c.toJSON());
@@ -51,7 +52,7 @@ client.once('ready', async () => {
     console.log(`✅ Logged in as ${client.user.tag}`);
     try {
         await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands });
-        console.log('🚀 Commands updated with permissions.');
+        console.log('🚀 Commands updated with Roblox included.');
     } catch (e) { console.error(e); }
 });
 
@@ -63,45 +64,66 @@ client.on('interactionCreate', async interaction => {
 
     if (commandName === 'gen') {
         const service = options.getString('service');
+        
         if (cooldowns.has(user.id)) {
             const exp = cooldowns.get(user.id) + COOLDOWN_TIME;
-            if (Date.now() < exp) return interaction.reply({ content: `❌ Wait ${Math.ceil((exp - Date.now()) / 60000)} min.`, ephemeral: true });
+            if (Date.now() < exp) {
+                return interaction.reply({ 
+                    content: `❌ Wait ${Math.ceil((exp - Date.now()) / 60000)} min before generating again.`, 
+                    ephemeral: true 
+                });
+            }
         }
 
         const path = getPath(service);
-        if (!fs.existsSync(path)) return interaction.reply({ content: `❌ File missing for ${service}.`, ephemeral: true });
+        if (!fs.existsSync(path)) return interaction.reply({ content: `❌ File ${service}.txt not found.`, ephemeral: true });
 
         let accounts = fs.readFileSync(path, 'utf8').trim().split(/\s+/).filter(x => x);
+        
         if (accounts.length > 0) {
             const acc = accounts.shift();
             fs.writeFileSync(path, accounts.join(' '));
-            const embed = new EmbedBuilder().setTitle('🍅 Tomato Gen').setColor(0xFF6347).addFields({ name: 'Service', value: service }, { name: 'Account', value: `\`${acc}\`` });
+            
+            const embed = new EmbedBuilder()
+                .setTitle('🍅 Tomato Gen')
+                .setColor(0xFF6347)
+                .addFields(
+                    { name: 'Service', value: service, inline: true },
+                    { name: 'Account', value: `\`${acc}\``, inline: true }
+                )
+                .setFooter({ text: 'Enjoy your account!' });
             
             try {
                 await user.send({ embeds: [embed] });
                 cooldowns.set(user.id, Date.now());
-                await interaction.reply({ content: `✅ **${user.tag}** generated a **${service}** account! Check DMs.` });
-            } catch { await interaction.reply({ content: '❌ Open your DMs!', ephemeral: true }); }
+                await interaction.reply({ content: `✅ **${user.tag}**, check your DMs for the **${service}** account!` });
+            } catch {
+                await interaction.reply({ content: '❌ I can\'t send you DMs! Please open them in Settings.', ephemeral: true });
+            }
         } else {
-            await interaction.reply({ content: `❌ No stock for ${service}!` });
+            await interaction.reply({ content: `❌ Sorry, we are out of stock for **${service}**!` });
         }
     }
 
     if (commandName === 'stock') {
         const count = (f) => fs.existsSync(f) ? fs.readFileSync(f, 'utf8').trim().split(/\s+/).filter(x => x).length : 0;
-        const embed = new EmbedBuilder().setTitle('📊 Stock Info').setColor(0x5865F2).addFields(
-            { name: 'Crunchyroll', value: `${count('./stock.txt')}`, inline: true },
-            { name: 'Fortnite', value: `${count('./fortnite.txt')}`, inline: true },
-            { name: 'Netflix', value: `${count('./netflix.txt')}`, inline: true },
-            { name: 'Minecraft', value: `${count('./minecraft.txt')}`, inline: true }
-        );
+        
+        const embed = new EmbedBuilder()
+            .setTitle('📊 Current Stock')
+            .setColor(0x5865F2)
+            .addFields(
+                { name: 'Crunchyroll', value: `${count('./stock.txt')}`, inline: true },
+                { name: 'Fortnite', value: `${count('./fortnite.txt')}`, inline: true },
+                { name: 'Netflix', value: `${count('./netflix.txt')}`, inline: true },
+                { name: 'Minecraft', value: `${count('./minecraft.txt')}`, inline: true },
+                { name: 'Roblox', value: `${count('./roblox.txt')}`, inline: true }
+            );
         await interaction.reply({ embeds: [embed] });
     }
 
     if (commandName === 'restock') {
-        // Doble verificación de seguridad
         if (!member.permissions.has(PermissionFlagsBits.ManageMessages)) {
-            return interaction.reply({ content: "❌ You need 'Manage Messages' permission!", ephemeral: true });
+            return interaction.reply({ content: "❌ You don't have permission to restock!", ephemeral: true });
         }
 
         const service = options.getString('service');
@@ -109,9 +131,9 @@ client.on('interactionCreate', async interaction => {
         const path = getPath(service);
 
         fs.appendFileSync(path, ` ${account}`);
-        await interaction.reply({ content: `✅ Successfully added to **${service}**!`, ephemeral: true });
+        await interaction.reply({ content: `✅ Successfully added 1 account to **${service}**!`, ephemeral: true });
     }
 });
 
 client.login(TOKEN);
-     
+                                                                                                    
