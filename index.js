@@ -1,3 +1,8 @@
+const http = require('http');
+http.createServer((req, res) => {
+  res.write("El tomate esta vivo");
+  res.end();
+}).listen(10000);
 require('dotenv').config();
 const { Client, GatewayIntentBits, SlashCommandBuilder, Routes, EmbedBuilder, PermissionFlagsBits } = require('discord.js');
 const { REST } = require('@discordjs/rest');
