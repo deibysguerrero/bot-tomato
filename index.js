@@ -44,7 +44,14 @@ const commands = [
         .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
         .addStringOption(opt => opt.setName('service').setDescription('Service').setRequired(true).addChoices(...services))
         .addStringOption(opt => opt.setName('account').setDescription('user:pass').setRequired(true))
+     new SlashCommandBuilder()
+        .setName('clear')
+        .setDescription('Clear all stock from a specific service')
+        .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
+        .addStringOption(opt => opt.setName('service').setDescription('Service to clear').setRequired(true).addChoices(...services))
 ].map(c => c.toJSON());
+    
+
 
 const rest = new REST({ version: '10' }).setToken(TOKEN);
 
@@ -59,7 +66,15 @@ client.once('ready', async () => {
 client.on('interactionCreate', async interaction => {
     if (!interaction.isChatInputCommand()) return;
     const { commandName, options, user, member } = interaction;
-
+    if (commandName === 'clear') {
+        const service = options.getString('service');
+        const path = getPath(service);
+        if (!fs.existsSync(path)) return interaction.reply({ content: `❌ File for ${service} not found.`, ephemeral: true });
+        
+        fs.writeFileSync(path, ''); 
+        return interaction.reply({ content: `✅ Stock for **${service}** has been cleared!`, ephemeral: true });
+    }
+    
     const getPath = (s) => (s === 'crunchyroll') ? './stock.txt' : `./${s}.txt`;
 
     if (commandName === 'gen') {
