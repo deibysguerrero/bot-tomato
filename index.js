@@ -60,6 +60,8 @@ const rest = new REST({ version: '10' }).setToken(TOKEN);
 
 client.once('ready', async () => {
     console.log(`✅ Logged in as ${client.user.tag}`);
+        client.user.setPresence({ status: 'idle' });
+    
     try {
         await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands });
         console.log('🚀 Commands updated with Roblox included.');
