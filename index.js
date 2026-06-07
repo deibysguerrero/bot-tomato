@@ -9,7 +9,7 @@ const http = require('http');
 const port = process.env.PORT || 10000;
 http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end('Tomato Bot is Active');
+    res.end('Reze Gen Is Online!');
 }).listen(port, '0.0.0.0');
 
 const client = new Client({
@@ -60,7 +60,7 @@ const rest = new REST({ version: '10' }).setToken(TOKEN);
 
 client.once('ready', async () => {
     console.log(`✅ Logged in as ${client.user.tag}`);
-        client.user.setPresence({ status: 'idle' });
+        client.user.setPresence({ status: 'dnd' });
     
     try {
         await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands });
