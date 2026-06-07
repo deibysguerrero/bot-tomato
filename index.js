@@ -105,7 +105,7 @@ client.on('interactionCreate', async interaction => {
             fs.writeFileSync(path, accounts.join(' '));
             
             const embed = new EmbedBuilder()
-                .setTitle('🍅 Tomato Gen')
+                .setTitle('Reze Gen! :3')
                 .setColor(0xFF6347)
                 .addFields(
                     { name: 'Service', value: service, inline: true },
