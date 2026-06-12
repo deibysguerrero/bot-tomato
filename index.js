@@ -5,36 +5,32 @@ const { REST } = require('@discordjs/rest');
 const fs = require('fs');
 const http = require('http'); 
 
-// --- SERVER PARA RAILWAY/RENDER ---
+// --- SERVIDOR WEB PARA RAILWAY ---
 const port = process.env.PORT || 10000;
 http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
     res.end('Eminence Gen Is Online!');
 }).listen(port, '0.0.0.0');
 
-// Intents necesarios incluyendo MessageContent para que funcione el prefijo "$"
 const client = new Client({
-    intents: [
-        GatewayIntentBits.Guilds, 
-        GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent 
-    ]
+    intents: [GatewayIntentBits.Guilds] 
 });
 
 const TOKEN = process.env.DISCORD_TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
 const GUILD_ID = process.env.GUILD_ID;
 
-const PREFIX = '$';
 const cooldowns = new Map();
-const COOLDOWN_TIME = 600000; // 10 minutos
+const COOLDOWN_TIME = 600000; 
 
+// Lista de servicios con Epic Games incluido
 const services = [
     { name: 'Crunchyroll', value: 'crunchyroll' },
     { name: 'Fortnite', value: 'fortnite' },
     { name: 'Netflix', value: 'netflix' },
     { name: 'Minecraft', value: 'minecraft' },
-    { name: 'Roblox', value: 'roblox' }
+    { name: 'Roblox', value: 'roblox' },
+    { name: 'Epic Games', value: 'epic' }
 ];
 
 const commands = [
@@ -45,7 +41,8 @@ const commands = [
     
     new SlashCommandBuilder()
         .setName('bgen')
-        .setDescription('Generate an exclusive account for server boosters and staff'),
+        .setDescription('Generate an exclusive account for server boosters and staff')
+        .addStringOption(opt => opt.setName('service').setDescription('Select service').setRequired(true).addChoices(...services)),
     
     new SlashCommandBuilder().setName('stock').setDescription('Check stock status'),
     
@@ -66,6 +63,10 @@ const commands = [
         .setDescription('Clear all stock from a specific service')
         .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
         .addStringOption(opt => opt.setName('service').setDescription('Service to clear').setRequired(true).addChoices(...services))
+        .addStringOption(opt => opt.setName('type').setDescription('Type to clear').setRequired(true).addChoices(
+            { name: 'Free', value: 'free' },
+            { name: 'Booster', value: 'booster' }
+        ))
 ].map(c => c.toJSON());
 
 const rest = new REST({ version: '10' }).setToken(TOKEN);
@@ -80,217 +81,119 @@ client.once('ready', async () => {
     
     try {
         await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands });
-        console.log('🚀 Commands synchronized with Discord.');
+        console.log('Commands synchronized.');
     } catch (e) { console.error(e); }
 });
 
-// --- LÓGICA COMPARTIDA (Funciones globales) ---
-
+// Lógica de archivos: Todo usa el archivo base, excepto Epic en modo booster que usa bepic.txt
 const getPath = (serviceName, stockType) => {
-    if (stockType === 'booster') return './boosters.txt';
+    if (stockType === 'booster' && serviceName === 'epic') {
+        return './bepic.txt';
+    }
+    // Para todo lo demás (Free de todos los juegos Y Booster de los otros juegos) usa el archivo normal
     if (serviceName === 'crunchyroll') return './stock.txt';
     return `./${serviceName.toLowerCase()}.txt`;
 };
 
-const countStock = (f) => fs.existsSync(f) ? fs.readFileSync(f, 'utf8').trim().split(/\s+/).filter(x => x).length : 0;
-
-async function handleFGen(targetService, user, member, responder) {
-    const isStaff = member.permissions.has(PermissionFlagsBits.ManageMessages);
-    const isBooster = !!member.premiumSince;
-    const bypassCooldown = isStaff || isBooster;
-
-    if (!targetService) {
-        return responder.reply({ content: `❌ Please specify a service! Choices: ${services.map(s => s.value).join(', ')}`, ephemeral: true });
-    }
-
-    const service = targetService.toLowerCase();
-    const validService = services.find(s => s.value === service);
-    if (!validService) {
-        return responder.reply({ content: `❌ Invalid service! Choose from: ${services.map(s => s.value).join(', ')}`, ephemeral: true });
-    }
-
-    if (!bypassCooldown && cooldowns.has(user.id)) {
-        const exp = cooldowns.get(user.id) + COOLDOWN_TIME;
-        if (Date.now() < exp) {
-            return responder.reply({ 
-                content: `❌ Wait ${Math.ceil((exp - Date.now()) / 60000)} min before generating again.`, 
-                ephemeral: true 
-            });
-        }
-    }
-
-    const path = getPath(service, 'free');
-    if (!fs.existsSync(path)) return responder.reply({ content: `❌ File for ${service} not found.`, ephemeral: true });
-
-    let accounts = fs.readFileSync(path, 'utf8').trim().split(/\s+/).filter(x => x);
-    
-    if (accounts.length > 0) {
-        const acc = accounts.shift();
-        fs.writeFileSync(path, accounts.join(' '));
-        
-        const dmEmbed = new EmbedBuilder()
-            .setTitle('Account Generated')
-            .setDescription('Your details have been sent to your DMs.')
-            .setColor(0x5865F2)
-            .addFields(
-                { name: 'Service', value: `\`${service.toUpperCase()}\``, inline: true },
-                { name: 'Account', value: `\`${acc}\``, inline: true }
-            )
-            .setFooter({ text: 'Eminence Gen' });
-        
-        try {
-            await user.send({ embeds: [dmEmbed] });
-            if (!bypassCooldown) cooldowns.set(user.id, Date.now());
-
-            const serverEmbed = new EmbedBuilder()
-                .setTitle('Account Sent')
-                .setColor(0x5865F2)
-                .addFields(
-                    { name: 'User', value: `<@${user.id}>`, inline: true },
-                    { name: 'Account type', value: `\`${service.toUpperCase()}\``, inline: true },
-                    { name: 'Type', value: '`Free`', inline: true }
-                )
-                .setFooter({ text: 'Eminence Gen' });
-
-            await responder.reply({ embeds: [serverEmbed] });
-        } catch {
-            await responder.reply({ content: '❌ I can\'t send you DMs! Please open them in Settings.', ephemeral: true });
-        }
-    } else {
-        await responder.reply({ content: `❌ Sorry, we are out of stock for **${service}**!` });
-    }
-}
-
-async function handleBGen(user, member, responder) {
-    const isStaff = member.permissions.has(PermissionFlagsBits.ManageMessages);
-    const isBooster = !!member.premiumSince;
-    const bypassCooldown = isStaff || isBooster;
-
-    if (!isStaff && !isBooster) {
-        return responder.reply({ content: '❌ This command is only for server boosters and staff!', ephemeral: true });
-    }
-
-    if (!bypassCooldown && cooldowns.has(user.id)) {
-        const exp = cooldowns.get(user.id) + COOLDOWN_TIME;
-        if (Date.now() < exp) {
-            return responder.reply({ 
-                content: `❌ Wait ${Math.ceil((exp - Date.now()) / 60000)} min before generating again.`, 
-                ephemeral: true 
-            });
-        }
-    }
-
-    const path = './boosters.txt';
-    if (!fs.existsSync(path)) return responder.reply({ content: '❌ Booster stock file not found.', ephemeral: true });
-
-    let accounts = fs.readFileSync(path, 'utf8').trim().split(/\s+/).filter(x => x);
-    
-    if (accounts.length > 0) {
-        const acc = accounts.shift();
-        fs.writeFileSync(path, accounts.join(' '));
-        
-        const dmEmbed = new EmbedBuilder()
-            .setTitle('Premium Reward Generated')
-            .setDescription('Exclusive booster account detail.')
-            .setColor(0xF47FFF)
-            .addFields(
-                { name: 'Tier', value: '`BOOSTER / STAFF`', inline: true },
-                { name: 'Account', value: `\`${acc}\``, inline: true }
-            )
-            .setFooter({ text: 'Eminence Gen' });
-        
-        try {
-            await user.send({ embeds: [dmEmbed] });
-            if (!bypassCooldown) cooldowns.set(user.id, Date.now());
-
-            const serverEmbed = new EmbedBuilder()
-                .setTitle('Account Sent')
-                .setColor(0xF47FFF)
-                .addFields(
-                    { name: 'User', value: `<@${user.id}>`, inline: true },
-                    { name: 'Account type', value: '`BOOSTER STOCK`', inline: true },
-                    { name: 'Type', value: '`Booster`', inline: true }
-                )
-                .setFooter({ text: 'Eminence Gen' });
-
-            await responder.reply({ embeds: [serverEmbed] });
-        } catch {
-            await responder.reply({ content: '❌ I can\'t send you DMs! Please open them in Settings.', ephemeral: true });
-        }
-    } else {
-        await responder.reply({ content: '❌ Sorry, we are out of stock for Boosters!' });
-    }
-}
-
-async function handleStock(responder) {
-    const embed = new EmbedBuilder()
-        .setTitle('📊 Current Stock')
-        .setColor(0x5865F2)
-        .addFields(
-            { name: 'Crunchyroll', value: `${countStock('./stock.txt')}`, inline: true },
-            { name: 'Fortnite', value: `${countStock('./fortnite.txt')}`, inline: true },
-            { name: 'Netflix', value: `${countStock('./netflix.txt')}`, inline: true },
-            { name: 'Minecraft', value: `${countStock('./minecraft.txt')}`, inline: true },
-            { name: 'Roblox', value: `${countStock('./roblox.txt')}`, inline: true }
-        )
-        .setFooter({ text: 'Eminence Gen' });
-    await responder.reply({ embeds: [embed] });
-}
-
-// --- EVENTO 1: ESCUCHAR COMANDOS CON PREFIJO ($) ---
-client.on('messageCreate', async message => {
-    if (message.author.bot || !message.content.startsWith(PREFIX)) return;
-
-    const args = message.content.slice(PREFIX.length).trim().split(/ +/);
-    const commandName = args.shift().toLowerCase();
-
-    const responder = {
-        reply: (options) => message.reply(options)
-    };
-
-    if (commandName === 'fgen') {
-        await handleFGen(args[0], message.author, message.member, responder);
-    }
-    if (commandName === 'bgen') {
-        await handleBGen(message.author, message.member, responder);
-    }
-    if (commandName === 'stock') {
-        await handleStock(responder);
-    }
-});
-
-// --- EVENTO 2: ESCUCHAR SLASH COMMANDS (/) ---
 client.on('interactionCreate', async interaction => {
     if (!interaction.isChatInputCommand()) return;
     const { commandName, options, user, member } = interaction;
     
     const isStaff = member.permissions.has(PermissionFlagsBits.ManageMessages);
-
-    const responder = {
-        reply: (opts) => interaction.reply(opts)
-    };
-
-    if (commandName === 'fgen') {
-        const service = options.getString('service');
-        await handleFGen(service, user, member, responder);
-    }
-    if (commandName === 'bgen') {
-        await handleBGen(user, member, responder);
-    }
-    if (commandName === 'stock') {
-        await handleStock(responder);
-    }
+    const isBooster = !!member.premiumSince;
+    const bypassCooldown = isStaff || isBooster;
 
     if (commandName === 'clear') {
         if (!isStaff) {
             return interaction.reply({ content: "❌ You don't have permission to use this command!", ephemeral: true });
         }
+
         const service = options.getString('service');
-        const path = getPath(service, 'free');
-        if (!fs.existsSync(path)) return interaction.reply({ content: `❌ File for ${service} not found.`, ephemeral: true });
+        const stockType = options.getString('type');
+        const path = getPath(service, stockType);
+        
+        if (!fs.existsSync(path)) return interaction.reply({ content: `❌ File not found.`, ephemeral: true });
         
         fs.writeFileSync(path, ''); 
-        return interaction.reply({ content: `✅ Stock for **${service}** has been cleared!`, ephemeral: true });
+        return interaction.reply({ content: `✅ Stock for **${service} (${stockType})** has been cleared!`, ephemeral: true });
+    }
+
+    if (commandName === 'fgen' || commandName === 'bgen') {
+        if (commandName === 'bgen' && !isStaff && !isBooster) {
+            return interaction.reply({ content: 'This command is only for server boosters!', ephemeral: true });
+        }
+
+        const service = options.getString('service');
+
+        if (!bypassCooldown && cooldowns.has(user.id)) {
+            const exp = cooldowns.get(user.id) + COOLDOWN_TIME;
+            if (Date.now() < exp) {
+                return interaction.reply({ 
+                    content: `❌ Wait ${Math.ceil((exp - Date.now()) / 60000)} min before generating again.`, 
+                    ephemeral: true 
+                });
+            }
+        }
+
+        const path = getPath(service, commandName === 'bgen' ? 'booster' : 'free');
+        if (!fs.existsSync(path)) return interaction.reply({ content: `❌ File for ${service} not found.`, ephemeral: true });
+
+        let accounts = fs.readFileSync(path, 'utf8').trim().split(/\s+/).filter(x => x);
+        
+        if (accounts.length > 0) {
+            const acc = accounts.shift();
+            fs.writeFileSync(path, accounts.join(' '));
+            
+            const dmEmbed = new EmbedBuilder()
+                .setTitle(commandName === 'bgen' ? 'Premium Reward Generated' : 'Account Generated')
+                .setDescription(commandName === 'bgen' ? 'Exclusive booster account detail.' : 'Your details have been sent to your DMs.')
+                .setColor(commandName === 'bgen' ? 0xF47FFF : 0x5865F2)
+                .addFields(
+                    { name: 'Service', value: `\`${service.toUpperCase()}\``, inline: true },
+                    { name: 'Account', value: `\`${acc}\``, inline: true }
+                )
+                .setFooter({ text: 'Eminence Gen' });
+            
+            try {
+                await user.send({ embeds: [dmEmbed] });
+                if (!bypassCooldown) cooldowns.set(user.id, Date.now());
+
+                const serverEmbed = new EmbedBuilder()
+                    .setTitle('Account Sent')
+                    .setColor(commandName === 'bgen' ? 0xF47FFF : 0x5865F2)
+                    .addFields(
+                        { name: 'User', value: `<@${user.id}>`, inline: true },
+                        { name: 'Account type', value: `\`${service.toUpperCase()}\``, inline: true },
+                        { name: 'Type', value: `\`${commandName === 'bgen' ? 'Booster' : 'Free'}\``, inline: true }
+                    )
+                    .setFooter({ text: 'Check your DMs' });
+
+                await interaction.reply({ embeds: [serverEmbed] });
+            } catch {
+                await interaction.reply({ content: '❌ I can\'t send you DMs! Please open them in Settings.', ephemeral: true });
+            }
+        } else {
+            await interaction.reply({ content: `❌ Sorry, we are out of stock for **${service}**!` });
+        }
+    }
+
+    if (commandName === 'stock') {
+        const count = (f) => fs.existsSync(f) ? fs.readFileSync(f, 'utf8').trim().split(/\s+/).filter(x => x).length : 0;
+        
+        const embed = new EmbedBuilder()
+            .setTitle('Current Stock')
+            .setColor(0x5865F2)
+            .setDescription('**Free Stock / Booster Stock**')
+            .addFields(
+                { name: 'Crunchyroll', value: `Free: \`${count('./stock.txt')}\` | Booster: \`${count('./stock.txt')}\``, inline: false },
+                { name: 'Fortnite', value: `Free: \`${count('./fortnite.txt')}\` | Booster: \`${count('./fortnite.txt')}\``, inline: false },
+                { name: 'Netflix', value: `Free: \`${count('./netflix.txt')}\` | Booster: \`${count('./netflix.txt')}\``, inline: false },
+                { name: 'Minecraft', value: `Free: \`${count('./minecraft.txt')}\` | Booster: \`${count('./minecraft.txt')}\``, inline: false },
+                { name: 'Roblox', value: `Free: \`${count('./roblox.txt')}\` | Booster: \`${count('./roblox.txt')}\``, inline: false },
+                { name: 'Epic Games', value: `Free: \`${count('./epic.txt')}\` | Booster: \`${count('./bepic.txt')}\``, inline: false }
+            )
+            .setFooter({ text: 'Eminence Gen' });
+        await interaction.reply({ embeds: [embed] });
     }
 
     if (commandName === 'restock') {
@@ -308,6 +211,7 @@ client.on('interactionCreate', async interaction => {
         }
 
         await interaction.deferReply({ ephemeral: true });
+
         const path = getPath(service, stockType);
         let contentToAdd = '';
 
@@ -323,8 +227,7 @@ client.on('interactionCreate', async interaction => {
             if (!fs.existsSync(path)) fs.writeFileSync(path, '');
             fs.appendFileSync(path, contentToAdd);
 
-            const targetName = stockType === 'booster' ? 'Boosters' : service;
-            return interaction.editReply({ content: `✅ Stock for **${targetName}** updated successfully.` });
+            return interaction.editReply({ content: `✅ Stock for **${service}** updated successfully in \`${path}\`.` });
         } catch (error) {
             console.error(error);
             return interaction.editReply({ content: "❌ Error processing the restock operation." });
@@ -333,4 +236,4 @@ client.on('interactionCreate', async interaction => {
 });
 
 client.login(TOKEN);
-
+    
