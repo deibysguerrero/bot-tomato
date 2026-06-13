@@ -31,8 +31,8 @@ const getPath = (service, type) => {
         if (s === 'cc') return './bvcc.txt';
         return `./b${s}.txt`;
     }
-    // Archivos FREE también empiezan con 'b'
-    return `./b${s}.txt`;
+    
+    return `./{s}.txt`;
 };
 
 const commands = [
@@ -57,7 +57,7 @@ client.on('interactionCreate', async interaction => {
     if (commandName === 'stock') {
         await interaction.deferReply({ ephemeral: true });
         const count = (f) => fs.existsSync(f) ? fs.readFileSync(f, 'utf8').split(/\r?\n/).filter(x => x.trim()).length : 0;
-        const embed = new EmbedBuilder().setTitle('📊 Stock Actual').setColor(0x5865F2);
+        const embed = new EmbedBuilder().setTitle('📊 Current Stock').setColor(0x5865F2);
         services.forEach(s => {
             const freeCount = (s.value === 'cc') ? 0 : count(getPath(s.value, 'free'));
             embed.addFields({ name: s.name, value: `Free: \`${freeCount}\` | Booster: \`${count(getPath(s.value, 'booster'))}\``, inline: false });
@@ -66,35 +66,35 @@ client.on('interactionCreate', async interaction => {
     }
 
     if (commandName === 'fgen' || commandName === 'bgen') {
-        if (commandName === 'bgen' && !isStaff && !isBooster) return interaction.reply({content: '❌ Solo Boosters/Staff.', ephemeral: true});
+        if (commandName === 'bgen' && !isStaff && !isBooster) return interaction.reply({content: '❌ Only Boosters!.', ephemeral: true});
         const service = options.getString('service');
         const path = getPath(service, commandName === 'bgen' ? 'booster' : 'free');
         
-        if (!fs.existsSync(path)) return interaction.reply({content: '❌ Archivo no encontrado.', ephemeral: true});
+        if (!fs.existsSync(path)) return interaction.reply({content: '❌ File Not Found.', ephemeral: true});
         let lines = fs.readFileSync(path, 'utf8').split(/\r?\n/).filter(x => x.trim());
-        if (!lines.length) return interaction.reply({content: '❌ Sin stock.', ephemeral: true});
+        if (!lines.length) return interaction.reply({content: '❌ Out Of Stock.', ephemeral: true});
 
         const acc = lines.shift();
         fs.writeFileSync(path, lines.join('\n'));
         try {
             await user.send(`Cuenta de ${service}: \`${acc}\``);
-            interaction.reply({content: '✅ Enviada al DM.', ephemeral: true});
-        } catch { interaction.reply({content: '❌ Abre tus DMs.', ephemeral: true}); }
+            interaction.reply({content: '✅ Account Sended To DM.', ephemeral: true});
+        } catch { interaction.reply({content: '❌ Open DMs.', ephemeral: true}); }
     }
 
     if (commandName === 'restock') {
-        if (!isStaff) return interaction.reply({content: "❌ No tienes permiso.", ephemeral: true});
+        if (!isStaff) return interaction.reply({content: "❌ You Dont Have Permissions.", ephemeral: true});
         const path = getPath(options.getString('service'), options.getString('type'));
         let contentToAdd = options.getAttachment('file') ? await (await fetch(options.getAttachment('file').url)).text() : options.getString('account');
         const current = fs.existsSync(path) ? fs.readFileSync(path, 'utf8') : '';
         fs.writeFileSync(path, current + (current ? '\n' : '') + contentToAdd.trim());
-        interaction.reply({content: '✅ Stock actualizado.', ephemeral: true});
+        interaction.reply({content: '✅ Stock Updated.', ephemeral: true});
     }
 
     if (commandName === 'clear') {
-        if (!isStaff) return interaction.reply({content: "❌ No tienes permiso.", ephemeral: true});
+        if (!isStaff) return interaction.reply({content: "❌ You Dont Have Permissions.", ephemeral: true});
         fs.writeFileSync(getPath(options.getString('service'), options.getString('type')), '');
-        interaction.reply({content: '✅ Limpiado.', ephemeral: true});
+        interaction.reply({content: '✅ Cleared Stock.', ephemeral: true});
     }
 });
 
