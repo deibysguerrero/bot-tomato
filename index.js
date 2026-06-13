@@ -1,15 +1,14 @@
 require('dotenv').config();
-require('dotenv').config();
 const { Client, GatewayIntentBits, SlashCommandBuilder, Routes, EmbedBuilder, PermissionFlagsBits } = require('discord.js');
 const { REST } = require('@discordjs/rest');
 const fs = require('fs');
-const http = require('http'); 
+const http = require('http');
 
 // --- SERVER PARA RAILWAY/RENDER ---
 const port = process.env.PORT || 10000;
 http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end('Reze Gen Is Online!');
+    res.end('Eminence Gen Is Online!');
 }).listen(port, '0.0.0.0');
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
@@ -17,9 +16,6 @@ const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 const TOKEN = process.env.DISCORD_TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
 const GUILD_ID = process.env.GUILD_ID;
-
-const cooldowns = new Map();
-const COOLDOWN_TIME = 600000; // 10 minutos
 
 const services = [
     { name: 'Crunchyroll', value: 'crunchyroll' },
@@ -30,7 +26,7 @@ const services = [
     { name: 'CC', value: 'cc' }
 ];
 
-// Lógica de rutas: Free = nombre.txt | Booster = bnombre.txt (con tus excepciones)
+// Lógica de rutas
 const getPath = (s, type) => {
     if (type === 'booster') {
         if (s === 'crunchyroll') return './bstock.txt';
@@ -41,16 +37,17 @@ const getPath = (s, type) => {
 };
 
 const commands = [
-    new SlashCommandBuilder().setName('gen').setDescription('Generate an account').addStringOption(o => o.setName('service').setDescription('Select service').setRequired(true).addChoices(...services)),
-    new SlashCommandBuilder().setName('bgen').setDescription('Generate Booster account').addStringOption(o => o.setName('service').setDescription('Select service').setRequired(true).addChoices(...services)),
+    new SlashCommandBuilder().setName('gen').setDescription('Generate an account').addStringOption(o => o.setName('service').setDescription('Select the service').setRequired(true).addChoices(...services)),
+    new SlashCommandBuilder().setName('bgen').setDescription('Generate Booster account').addStringOption(o => o.setName('service').setDescription('Select the service').setRequired(true).addChoices(...services)),
     new SlashCommandBuilder().setName('stock').setDescription('Check stock status'),
     new SlashCommandBuilder().setName('restock').setDescription('Add accounts').setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
-        .addStringOption(o => o.setName('service').setDescription('Service').setRequired(true).addChoices(...services))
-        .addStringOption(o => o.setName('type').setDescription('Free or Booster').setRequired(true).addChoices({name:'Free',value:'free'},{name:'Booster',value:'booster'}))
-        .addStringOption(o => o.setName('account').setRequired(false)).addAttachmentOption(o => o.setName('file').setRequired(false)),
+        .addStringOption(o => o.setName('service').setDescription('Select the service').setRequired(true).addChoices(...services))
+        .addStringOption(o => o.setName('type').setDescription('Select free or booster').setRequired(true).addChoices({name:'Free',value:'free'},{name:'Booster',value:'booster'}))
+        .addStringOption(o => o.setName('account').setDescription('Account details').setRequired(false))
+        .addAttachmentOption(o => o.setName('file').setDescription('Upload .txt file').setRequired(false)),
     new SlashCommandBuilder().setName('clear').setDescription('Clear stock').setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
-        .addStringOption(o => o.setName('service').setDescription('Service').setRequired(true).addChoices(...services))
-        .addStringOption(o => o.setName('type').setDescription('Free or Booster').setRequired(true).addChoices({name:'Free',value:'free'},{name:'Booster',value:'booster'}))
+        .addStringOption(o => o.setName('service').setDescription('Select the service').setRequired(true).addChoices(...services))
+        .addStringOption(o => o.setName('type').setDescription('Select free or booster').setRequired(true).addChoices({name:'Free',value:'free'},{name:'Booster',value:'booster'}))
 ].map(c => c.toJSON());
 
 const rest = new REST({ version: '10' }).setToken(TOKEN);
@@ -75,7 +72,7 @@ client.on('interactionCreate', async interaction => {
     }
 
     if (commandName === 'gen' || commandName === 'bgen') {
-        if (commandName === 'bgen' && !isStaff && !isBooster) return interaction.reply({ content: '❌ Booster only!', ephemeral: true });
+        if (commandName === 'bgen' && !isStaff && !isBooster) return interaction.reply({ content: '❌ Booster/Staff only!', ephemeral: true });
         const service = options.getString('service');
         const path = getPath(service, commandName === 'bgen' ? 'booster' : 'free');
         
@@ -117,4 +114,3 @@ client.on('interactionCreate', async interaction => {
 });
 
 client.login(TOKEN);
-            
