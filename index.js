@@ -90,7 +90,7 @@ client.on('interactionCreate', async interaction => {
         if (service === 'cc') {
             embed = new EmbedBuilder().setTitle('💎 Virtual Credit Card').setColor(0x0099FF).setDescription(`**Your virtual cc:** \`${acc}\``);
         } else {
-            embed = new EmbedBuilder().setTitle(commandName === 'bgen' ? '💎 Premium Booster Account' : 'Reze Gen! :3').setColor(commandName === 'bgen' ? 0xF47FFF : 0xFF6347)
+            embed = new EmbedBuilder().setTitle(commandName === 'bgen' ? '💎 Premium Booster Account' : 'Eminence Gen').setColor(commandName === 'bgen' ? 0xF47FFF : 0xFF6347)
                 .addFields({ name: 'Service', value: service, inline: true }, { name: 'Account', value: `\`${acc}\``, inline: true }).setFooter({ text: 'Enjoy!' });
         }
         
